@@ -1,0 +1,27 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-slate-50 text-ink-900;
+  }
+}
+
+@layer utilities {
+  .font-bijoy-preview {
+    /*
+      SutonnyMJ is the intended legacy font, but the browser may not have it
+      installed. We prefer that font first and then use proper Bengali fonts
+      as a closer visual fallback so conjuncts stay readable and less jagged.
+    */
+    font-family: "SutonnyMJ", "Noto Sans Bengali", "Hind Siliguri", "Arial Unicode MS", sans-serif;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    text-rendering: optimizeLegibility;
+  }
+}
