@@ -1,25 +1,46 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.exportRouter = void 0;
 const express_1 = require("express");
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const docxBuilder_1 = require("../services/docxBuilder");
 const pdfLayoutBlocks_1 = require("../services/pdfLayoutBlocks");
 const docModel_1 = require("../model/docModel");
+const upload_1 = require("../middleware/upload");
 exports.exportRouter = (0, express_1.Router)();
 const MAX_TEXT_LENGTH = 2000000; // guard against abuse; ~2M chars is already a huge document
 /**
  * POST /api/export/docx
  * body: { blocks?: DocBlock[], bijoyText?: string, title?: string }
  *
- * `blocks` (the structured, already-Bijoy-converted document produced by
- * /api/convert) is preferred - it reproduces alignment, indentation,
- * headings, lists and tables. `bijoyText` (plain text) is accepted as a
- * fallback for older clients or hand-edited text, and is wrapped into
- * simple left-aligned paragraphs.
+ * If `blocks` contains a high-fidelity document token ({ __kind: "hifi_doc", id }),
+ * the exact in-place transformed OpenXML DOCX is streamed with 100% formatting preserved.
+ * Otherwise, `blocks` is built via docxBuilder, or `bijoyText` is wrapped into paragraphs.
  */
 exports.exportRouter.post("/export/docx", async (req, res) => {
     try {
         const { blocks, bijoyText, title } = req.body || {};
+        // 1. High-fidelity converted document
+        if (Array.isArray(blocks) && blocks.length > 0 && blocks[0]?.__kind === "hifi_doc") {
+            const docId = blocks[0].id;
+            if (typeof docId === "string" && /^[\w-]+$/.test(docId)) {
+                const hifiPath = path_1.default.join(upload_1.TMP_DIR, `hifi_${docId}.docx`);
+                if (fs_1.default.existsSync(hifiPath)) {
+                    const buffer = await fs_1.default.promises.readFile(hifiPath);
+                    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+                    const safeTitle = typeof title === "string" && title.trim().length > 0
+                        ? title.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 100)
+                        : "bijoy-converted";
+                    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.docx"`);
+                    res.send(buffer);
+                    return;
+                }
+            }
+        }
         let docBlocks;
         if (Array.isArray(blocks) && blocks.length > 0) {
             if (!isValidBlockArray(blocks)) {

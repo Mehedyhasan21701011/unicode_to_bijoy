@@ -1,7 +1,10 @@
 import { Router, Request, Response } from "express";
+import path from "path";
+import fs from "fs";
 import { buildBijoyDocx } from "../services/docxBuilder";
 import { blocksFromPlainText } from "../services/pdfLayoutBlocks";
 import { flattenBlocksToText, type DocBlock } from "../model/docModel";
+import { TMP_DIR } from "../middleware/upload";
 
 export const exportRouter = Router();
 
@@ -11,15 +14,35 @@ const MAX_TEXT_LENGTH = 2_000_000; // guard against abuse; ~2M chars is already 
  * POST /api/export/docx
  * body: { blocks?: DocBlock[], bijoyText?: string, title?: string }
  *
- * `blocks` (the structured, already-Bijoy-converted document produced by
- * /api/convert) is preferred - it reproduces alignment, indentation,
- * headings, lists and tables. `bijoyText` (plain text) is accepted as a
- * fallback for older clients or hand-edited text, and is wrapped into
- * simple left-aligned paragraphs.
+ * If `blocks` contains a high-fidelity document token ({ __kind: "hifi_doc", id }),
+ * the exact in-place transformed OpenXML DOCX is streamed with 100% formatting preserved.
+ * Otherwise, `blocks` is built via docxBuilder, or `bijoyText` is wrapped into paragraphs.
  */
 exportRouter.post("/export/docx", async (req: Request, res: Response) => {
   try {
     const { blocks, bijoyText, title } = req.body || {};
+
+    // 1. High-fidelity converted document
+    if (Array.isArray(blocks) && blocks.length > 0 && (blocks[0] as any)?.__kind === "hifi_doc") {
+      const docId = (blocks[0] as any).id;
+      if (typeof docId === "string" && /^[\w-]+$/.test(docId)) {
+        const hifiPath = path.join(TMP_DIR, `hifi_${docId}.docx`);
+        if (fs.existsSync(hifiPath)) {
+          const buffer = await fs.promises.readFile(hifiPath);
+          res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          );
+          const safeTitle =
+            typeof title === "string" && title.trim().length > 0
+              ? title.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 100)
+              : "bijoy-converted";
+          res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.docx"`);
+          res.send(buffer);
+          return;
+        }
+      }
+    }
 
     let docBlocks: DocBlock[] | undefined;
 

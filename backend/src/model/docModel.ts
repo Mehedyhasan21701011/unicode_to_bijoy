@@ -17,6 +17,7 @@ export interface DocRun {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  fontSize?: number;
 }
 
 /** One indent "step" is this many twips (1/20 pt) - roughly 0.25in. */
@@ -33,6 +34,8 @@ export interface ParagraphBlock {
   /** Set when this paragraph is a heading (derived from PDF centering/short-line heuristics, or a real Word heading style). */
   heading?: 1 | 2 | 3;
   listItem?: { ordered: boolean; level: number };
+  /** Source paragraph spacing, in twips. */
+  spacing?: { before?: number; after?: number; line?: number; lineRule?: "auto" | "exact" | "atLeast" };
   /** True for a deliberate empty paragraph (blank line) that should be preserved as vertical space. */
   isBlank?: boolean;
 }

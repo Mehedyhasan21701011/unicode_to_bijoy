@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import { convertRouter } from "./routes/convert";
 import { exportRouter } from "./routes/export";
+import { cleanupOldTempFiles } from "./utils/cleanup";
+import { TMP_DIR } from "./middleware/upload";
 
 dotenv.config();
 
@@ -21,12 +23,29 @@ const PORT = process.env.PORT
   ? parseInt(process.env.PORT, 10)
   : 4000;
 
-const CORS_ORIGIN =
-  process.env.CORS_ORIGIN || "http://localhost:5173";
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || "http://localhost:5173").split(",").map((origin) => origin.trim()).filter(Boolean);
 
 app.use(
   cors({
-    origin: CORS_ORIGIN,
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(?::\d+)?$/i.test(origin);
+      const isVercelPreview = /\.vercel\.app$/i.test(origin);
+
+      if (isLocalhost || isVercelPreview) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
@@ -61,5 +80,11 @@ app.use("/api", (_req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`PDF to Bijoy backend listening on port ${PORT}`);
-  console.log(`CORS origin allowed: ${CORS_ORIGIN}`);
+  console.log(`CORS origins allowed: ${ALLOWED_ORIGINS.join(", ")}`);
+
+  // Clean up any stale temp files on startup and every 30 minutes
+  cleanupOldTempFiles(TMP_DIR).catch(() => {});
+  setInterval(() => {
+    cleanupOldTempFiles(TMP_DIR).catch(() => {});
+  }, 30 * 60 * 1000);
 });

@@ -6,12 +6,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertRouter = void 0;
 const express_1 = require("express");
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const uuid_1 = require("uuid");
 const upload_1 = require("../middleware/upload");
 const pdfExtract_1 = require("../services/pdfExtract");
 const pdfLayoutBlocks_1 = require("../services/pdfLayoutBlocks");
 const ocr_1 = require("../services/ocr");
 const docxExtract_1 = require("../services/docxExtract");
 const legacyDocConvert_1 = require("../services/legacyDocConvert");
+const docxInPlaceMutator_1 = require("../services/docxInPlaceMutator");
 const unicodeToBijoy_1 = require("../converter/unicodeToBijoy");
 const docModel_1 = require("../model/docModel");
 const cleanup_1 = require("../utils/cleanup");
@@ -107,16 +110,64 @@ exports.convertRouter.post("/convert", (req, res) => {
                 }
             }
             else if (kind === "docx") {
-                sseWrite(res, "progress", { step: "extracting", message: "Reading document structure" });
-                blocks = await (0, docxExtract_1.extractDocxBlocks)(tempFilePath);
+                sseWrite(res, "progress", { step: "extracting", message: "Reading original document package" });
+                sseWrite(res, "progress", { step: "converting", message: "Converting Bengali text to Bijoy (SutonnyMJ)" });
+                const hifiResult = await (0, docxInPlaceMutator_1.transformDocxInPlace)(tempFilePath);
+                if (!hifiResult.unicodeText || hifiResult.unicodeText.replace(/\s/g, "").length === 0) {
+                    return fail("No text could be extracted from this document.", "EMPTY_DOCUMENT");
+                }
+                if (!(0, unicodeToBijoy_1.isUnicodeBengali)(hifiResult.unicodeText)) {
+                    return fail("No Bengali text was detected in this document. Please upload a Bengali-language document.", "NO_BENGALI_DETECTED");
+                }
+                const docId = (0, uuid_1.v4)();
+                const hifiOutPath = path_1.default.join(upload_1.TMP_DIR, `hifi_${docId}.docx`);
+                await fs_1.default.promises.writeFile(hifiOutPath, hifiResult.buffer);
+                sseWrite(res, "progress", { step: "creating_document", message: "Finalizing high-fidelity document" });
+                sseWrite(res, "progress", { step: "ready", message: "Done" });
+                sseWrite(res, "done", {
+                    unicodeText: hifiResult.unicodeText,
+                    bijoyText: hifiResult.bijoyText,
+                    blocks: [{ __kind: "hifi_doc", id: docId }],
+                    fullyConverted: true,
+                    unconvertedChars: [],
+                    usedOcr: false,
+                    numPages: 1,
+                    bengaliDensity: (0, unicodeToBijoy_1.bengaliDensity)(hifiResult.unicodeText),
+                });
+                res.end();
+                return;
             }
             else if (kind === "doc") {
-                sseWrite(res, "progress", { step: "extracting", message: "Converting legacy .doc file" });
+                sseWrite(res, "progress", { step: "extracting", message: "Converting legacy .doc file with LibreOffice" });
                 legacyConvertDir = path_1.default.join(path_1.default.dirname(tempFilePath), `doc_${path_1.default.basename(tempFilePath, path_1.default.extname(tempFilePath))}`);
                 const convertedPath = await (0, legacyDocConvert_1.convertLegacyDocToDocx)(tempFilePath, legacyConvertDir);
-                blocks = await (0, docxExtract_1.extractDocxBlocks)(convertedPath);
+                sseWrite(res, "progress", { step: "converting", message: "Converting Bengali text to Bijoy (SutonnyMJ)" });
+                const hifiResult = await (0, docxInPlaceMutator_1.transformDocxInPlace)(convertedPath);
                 await (0, cleanup_1.safeDelete)(legacyConvertDir, true);
                 legacyConvertDir = undefined;
+                if (!hifiResult.unicodeText || hifiResult.unicodeText.replace(/\s/g, "").length === 0) {
+                    return fail("No text could be extracted from this document.", "EMPTY_DOCUMENT");
+                }
+                if (!(0, unicodeToBijoy_1.isUnicodeBengali)(hifiResult.unicodeText)) {
+                    return fail("No Bengali text was detected in this document. Please upload a Bengali-language document.", "NO_BENGALI_DETECTED");
+                }
+                const docId = (0, uuid_1.v4)();
+                const hifiOutPath = path_1.default.join(upload_1.TMP_DIR, `hifi_${docId}.docx`);
+                await fs_1.default.promises.writeFile(hifiOutPath, hifiResult.buffer);
+                sseWrite(res, "progress", { step: "creating_document", message: "Finalizing high-fidelity document" });
+                sseWrite(res, "progress", { step: "ready", message: "Done" });
+                sseWrite(res, "done", {
+                    unicodeText: hifiResult.unicodeText,
+                    bijoyText: hifiResult.bijoyText,
+                    blocks: [{ __kind: "hifi_doc", id: docId }],
+                    fullyConverted: true,
+                    unconvertedChars: [],
+                    usedOcr: false,
+                    numPages: 1,
+                    bengaliDensity: (0, unicodeToBijoy_1.bengaliDensity)(hifiResult.unicodeText),
+                });
+                res.end();
+                return;
             }
             else {
                 return fail("Only .pdf, .docx and .doc files are supported.", "UNSUPPORTED_FILE_TYPE");

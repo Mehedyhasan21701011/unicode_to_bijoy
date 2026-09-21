@@ -46,7 +46,7 @@ export function DownloadBar({
         </button>
         <button
           type="button"
-          onClick={() => downloadTxt(bijoyText)}
+          onClick={() => downloadTxt(bijoyText, fileTitle)}
           className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-ink-900 transition-colors hover:bg-slate-50"
         >
           <TxtIcon /> Download TXT

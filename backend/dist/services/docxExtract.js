@@ -105,6 +105,7 @@ function parseParagraph(pChildren) {
         indentLevel = Math.round(left / docModel_1.INDENT_STEP_TWIPS);
         firstLineIndentLevel = Math.round((firstLine - hanging) / docModel_1.INDENT_STEP_TWIPS);
     }
+    const spacing = parseSpacing(findChild(pPr, "w:spacing")?.["w:spacing"]);
     let heading;
     const pStyle = findChild(pPr, "w:pStyle");
     const styleVal = getAttr(pStyle, "w:val");
@@ -169,6 +170,7 @@ function parseParagraph(pChildren) {
         firstLineIndentLevel: firstLineIndentLevel || undefined,
         heading,
         listItem,
+        spacing: spacing || undefined,
     };
 }
 function parseRun(rChildren) {
@@ -178,6 +180,8 @@ function parseRun(rChildren) {
     const underlineNode = findChild(rPr, "w:u");
     const underlineVal = getAttr(underlineNode, "w:val");
     const underline = Boolean(underlineNode) && underlineVal !== "none";
+    const fontSizeNode = findChild(rPr, "w:sz");
+    const fontSize = fontSizeNode ? parseInt(getAttr(fontSizeNode, "w:val") ?? "0", 10) || undefined : undefined;
     let text = "";
     for (const child of rChildren) {
         if (child["w:t"] !== undefined) {
@@ -193,7 +197,33 @@ function parseRun(rChildren) {
     }
     if (text.length === 0)
         return undefined;
-    return { text, bold: bold || undefined, italic: italic || undefined, underline: underline || undefined };
+    return {
+        text,
+        bold: bold || undefined,
+        italic: italic || undefined,
+        underline: underline || undefined,
+        fontSize,
+    };
+}
+function parseSpacing(spacingNode) {
+    if (!spacingNode)
+        return undefined;
+    const spacing = spacingNode[0];
+    const before = parseInt(getAttr(spacing, "w:before") ?? "0", 10) || 0;
+    const after = parseInt(getAttr(spacing, "w:after") ?? "0", 10) || 0;
+    const line = parseInt(getAttr(spacing, "w:line") ?? "0", 10) || 0;
+    const rawLineRule = getAttr(spacing, "w:lineRule");
+    const lineRule = rawLineRule && ["auto", "exact", "atLeast"].includes(rawLineRule)
+        ? rawLineRule
+        : undefined;
+    if (!before && !after && !line)
+        return undefined;
+    return {
+        before: before || undefined,
+        after: after || undefined,
+        line: line || undefined,
+        lineRule,
+    };
 }
 function extractText(tNode) {
     if (Array.isArray(tNode)) {

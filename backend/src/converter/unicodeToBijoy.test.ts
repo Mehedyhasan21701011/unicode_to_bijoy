@@ -13,6 +13,8 @@
  */
 
 import { unicodeToBijoy, isUnicodeBengali, bengaliDensity } from "./unicodeToBijoy";
+import { buildBijoyDocx } from "../services/docxBuilder";
+import AdmZip from "adm-zip";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const bijoyToUnicode = require("@codesigntheory/bnbijoy2unicode").default;
 
@@ -133,7 +135,40 @@ console.log("\n=== Detection helpers ===");
   });
 }
 
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) {
-  process.exit(1);
+async function checkDocxBuilderKeepsOriginalLayout() {
+  const buffer = await buildBijoyDocx({
+    blocks: [
+      {
+        kind: "paragraph",
+        runs: [{ text: "আমি বাংলা লিখি।" }],
+        indentLevel: 0,
+        alignment: "left",
+      },
+    ],
+  });
+
+  const zip = new AdmZip(buffer);
+  const xml = zip.readAsText("word/document.xml");
+  const hasSutonnyFont = xml.includes("SutonnyMJ");
+  const hasExplicitSize = /w:sz\s+w:val=/.test(xml);
+  const hasParagraphSpacing = /w:spacing\s+w:after=|w:spacing\s+w:before=/.test(xml);
+
+  if (hasSutonnyFont && !hasExplicitSize && !hasParagraphSpacing) {
+    passed++;
+    console.log("PASS  [docx builder preserves source layout and only changes font]");
+    return;
+  }
+
+  failed++;
+  console.error(
+    `FAIL  [docx builder preserves source layout and only changes font] font=${hasSutonnyFont} sizeOverride=${hasExplicitSize} spacingOverride=${hasParagraphSpacing}`
+  );
 }
+
+(async () => {
+  await checkDocxBuilderKeepsOriginalLayout();
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed > 0) {
+    process.exit(1);
+  }
+})();

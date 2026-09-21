@@ -1,6 +1,7 @@
 import type { ConversionResult, ProgressEvent, ApiError } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ||
+  (window.location.hostname === "localhost" ? "http://localhost:4000" : window.location.origin)).replace(/\/$/, "");
 
 export class ApiRequestError extends Error {
   code: string;
@@ -27,6 +28,19 @@ export async function convertDocument(
     method: "POST",
     body: formData,
   });
+
+  if (!response.ok) {
+    let message = `Server error (${response.status})`;
+    let code = "SERVER_ERROR";
+    try {
+      const errJson = await response.json();
+      if (errJson?.message) message = errJson.message;
+      if (errJson?.code) code = errJson.code;
+    } catch {
+      // ignore json parse error
+    }
+    throw new ApiRequestError({ message, code });
+  }
 
   if (!response.body) {
     throw new ApiRequestError({ message: "No response from server.", code: "NO_RESPONSE" });
@@ -103,16 +117,18 @@ export async function downloadDocx(
   }
 
   const blob = await response.blob();
-  triggerDownload(blob, "bijoy-converted.docx");
+  const safeFilename = title ? `${title}.docx` : "bijoy-converted.docx";
+  triggerDownload(blob, safeFilename);
 }
 
 /**
  * Downloads the Bijoy text as a plain .txt file. Done entirely client-side
  * since no server processing is needed for a raw text export.
  */
-export function downloadTxt(bijoyText: string): void {
+export function downloadTxt(bijoyText: string, title?: string): void {
   const blob = new Blob([bijoyText], { type: "text/plain;charset=utf-8" });
-  triggerDownload(blob, "bijoy-converted.txt");
+  const safeFilename = title ? `${title}.txt` : "bijoy-converted.txt";
+  triggerDownload(blob, safeFilename);
 }
 
 function triggerDownload(blob: Blob, filename: string): void {

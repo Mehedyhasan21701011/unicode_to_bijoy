@@ -4,8 +4,6 @@ exports.buildBijoyDocx = buildBijoyDocx;
 const docx_1 = require("docx");
 const docModel_1 = require("../model/docModel");
 const BIJOY_FONT = "SutonnyMJ";
-const BODY_SIZE = 26; // 13pt - a comfortable reading size for Bijoy glyphs
-const HEADING_SIZES = { 1: 36, 2: 32, 3: 28 }; // 18/16/14pt
 const HEADING_LEVELS = {
     1: docx_1.HeadingLevel.HEADING_1,
     2: docx_1.HeadingLevel.HEADING_2,
@@ -33,7 +31,7 @@ async function buildBijoyDocx(options) {
     if (options.title) {
         children.push(new docx_1.Paragraph({
             heading: docx_1.HeadingLevel.HEADING_1,
-            children: [new docx_1.TextRun({ text: options.title, font: BIJOY_FONT, size: HEADING_SIZES[1] })],
+            children: [new docx_1.TextRun({ text: options.title, font: BIJOY_FONT })],
         }));
     }
     for (const block of options.blocks) {
@@ -100,14 +98,21 @@ function buildParagraph(block) {
         numbering: block.listItem
             ? { reference: "bijoy-bullet-list", level: Math.max(0, block.listItem.level - 1) }
             : undefined,
-        spacing: { after: 160 },
+        spacing: block.spacing
+            ? {
+                before: block.spacing.before,
+                after: block.spacing.after,
+                line: block.spacing.line,
+                lineRule: block.spacing.lineRule,
+            }
+            : undefined,
     });
 }
 function buildRun(run, heading) {
     return new docx_1.TextRun({
         text: run.text,
         font: BIJOY_FONT,
-        size: heading ? HEADING_SIZES[heading] : BODY_SIZE,
+        size: run.fontSize,
         bold: run.bold || undefined,
         italics: run.italic || undefined,
         underline: run.underline ? {} : undefined,
