@@ -1,0 +1,10 @@
+# Files to exclude from the Docker build context.
+# This dramatically speeds up `docker build` by not sending gigabytes of
+# node_modules or generated output to the Docker daemon.
+
+node_modules/
+dist/
+tmp/
+.env
+*.log
+.DS_Store

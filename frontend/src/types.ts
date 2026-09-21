@@ -34,6 +34,19 @@ export interface ApiError {
 export type AppStatus =
   | { kind: "idle" }
   | { kind: "file_selected"; file: File }
-  | { kind: "processing"; file: File; step: ProgressStep; stepMessage: string }
+  | {
+      kind: "processing";
+      file: File;
+      step: ProgressStep;
+      stepMessage: string;
+      /**
+       * True when the request has been sent but no SSE events have arrived
+       * yet after a delay — likely a Render free-tier cold start. The UI
+       * should show a "server is waking up" notice so the user doesn't
+       * think it's broken.
+       */
+      wakingUp?: boolean;
+    }
   | { kind: "done"; file: File; result: ConversionResult }
   | { kind: "error"; file: File | null; error: ApiError };
+

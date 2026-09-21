@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { UploadArea, SelectedFileCard } from "./components/UploadArea";
 import { ProgressSteps } from "./components/ProgressSteps";
 import { PreviewPane } from "./components/PreviewPane";
@@ -6,11 +6,22 @@ import { DownloadBar, ErrorBanner } from "./components/DownloadBar";
 import { convertDocument, ApiRequestError } from "./api";
 import type { AppStatus, ProgressStep } from "./types";
 
+// How long (ms) to wait for the first SSE event before showing the
+// "server is waking up" message. Render free-tier cold starts can take
+// 30–60 seconds. We show the notice early (8s) so the user doesn't cancel.
+const COLD_START_NOTICE_DELAY_MS = 8_000;
+
 export default function App() {
   const [status, setStatus] = useState<AppStatus>({ kind: "idle" });
   const [everSawOcr, setEverSawOcr] = useState(false);
+  // Ref to the cold-start timer so we can cancel it on first SSE event.
+  const coldStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reset = useCallback(() => {
+    if (coldStartTimerRef.current) {
+      clearTimeout(coldStartTimerRef.current);
+      coldStartTimerRef.current = null;
+    }
     setStatus({ kind: "idle" });
     setEverSawOcr(false);
   }, []);
@@ -21,9 +32,31 @@ export default function App() {
 
   const handleConvert = useCallback(async (file: File) => {
     setEverSawOcr(false);
-    setStatus({ kind: "processing", file, step: "uploading", stepMessage: "File uploaded" });
+    setStatus({ kind: "processing", file, step: "uploading", stepMessage: "Uploading…" });
+
+    // Start the cold-start timer. If we don't get any SSE event within
+    // COLD_START_NOTICE_DELAY_MS, flip wakingUp=true so the UI shows a notice.
+    let receivedFirstEvent = false;
+    coldStartTimerRef.current = setTimeout(() => {
+      if (!receivedFirstEvent) {
+        setStatus((prev) =>
+          prev.kind === "processing"
+            ? { ...prev, wakingUp: true }
+            : prev
+        );
+      }
+    }, COLD_START_NOTICE_DELAY_MS);
+
     try {
       const result = await convertDocument(file, (event) => {
+        // Cancel the cold-start timer on the first real SSE event.
+        if (!receivedFirstEvent) {
+          receivedFirstEvent = true;
+          if (coldStartTimerRef.current) {
+            clearTimeout(coldStartTimerRef.current);
+            coldStartTimerRef.current = null;
+          }
+        }
         if (event.step === "ocr") setEverSawOcr(true);
         setStatus({ kind: "processing", file, step: event.step, stepMessage: event.message });
       });
@@ -38,8 +71,14 @@ export default function App() {
           error: { message: "An unexpected error occurred. Please try again.", code: "UNKNOWN" },
         });
       }
+    } finally {
+      if (coldStartTimerRef.current) {
+        clearTimeout(coldStartTimerRef.current);
+        coldStartTimerRef.current = null;
+      }
     }
   }, []);
+
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -71,6 +110,13 @@ export default function App() {
                 stepMessage={status.stepMessage}
                 skipOcr={!everSawOcr && status.step !== "ocr"}
               />
+              {status.wakingUp && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <span className="font-semibold">সার্ভার চালু হচ্ছে…</span>
+                  {" "}The server is waking up from idle — this can take up to a minute on the free plan.
+                  Please wait, your file will process automatically once it's ready.
+                </div>
+              )}
             </>
           )}
 

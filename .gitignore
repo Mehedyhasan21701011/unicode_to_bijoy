@@ -1,3 +1,18 @@
 node_modules/
 dist/
 .env
+
+# Temporary upload files (backend)
+tmp/
+backend/tmp/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Build artifacts
+*.tsbuildinfo
