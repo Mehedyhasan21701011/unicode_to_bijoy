@@ -14,6 +14,7 @@
 
 import { unicodeToBijoy, isUnicodeBengali, bengaliDensity } from "./unicodeToBijoy";
 import { buildBijoyDocx } from "../services/docxBuilder";
+import { reconstructParagraphBlocks } from "../services/pdfLayoutBlocks";
 import AdmZip from "adm-zip";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const bijoyToUnicode = require("@codesigntheory/bnbijoy2unicode").default;
@@ -135,6 +136,29 @@ console.log("\n=== Detection helpers ===");
   });
 }
 
+function checkPdfLayoutRejoinsWrappedText() {
+  const layout = [
+    "ইউনিকোড বাংলা -> Bijoy/SutonnyMJ",
+    "প্রাথমিক অনুবাদ: এই নিবন্ধে বাংলা, English, সংখ্যা, আলিক, ডবল, bold, italic, indentation এবং",
+    "image placeholder রঙা আছে।",
+    "",
+    "এটি একটি নতুন প্যারাগ্রাফ।",
+  ].join("\n");
+
+  const blocks = reconstructParagraphBlocks(layout);
+  const texts = blocks.map((block) => block.runs.map((run) => run.text).join("")).filter(Boolean);
+  const hasMergedParagraph = texts.length === 2 && texts[0].includes("image placeholder রঙা আছে।");
+
+  if (hasMergedParagraph) {
+    passed++;
+    console.log("PASS  [PDF layout rejoin] wrapped paragraph stays as one block");
+    return;
+  }
+
+  failed++;
+  console.error(`FAIL  [PDF layout rejoin] unexpected block split: ${JSON.stringify(texts)}`);
+}
+
 async function checkDocxBuilderKeepsOriginalLayout() {
   const buffer = await buildBijoyDocx({
     blocks: [
@@ -166,6 +190,7 @@ async function checkDocxBuilderKeepsOriginalLayout() {
 }
 
 (async () => {
+  checkPdfLayoutRejoinsWrappedText();
   await checkDocxBuilderKeepsOriginalLayout();
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) {

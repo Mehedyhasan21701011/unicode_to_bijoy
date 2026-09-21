@@ -132,9 +132,23 @@ export function reconstructParagraphBlocks(layoutText: string): ParagraphBlock[]
     }
     const prev = buffer[buffer.length - 1];
     const prevRanFull = prev.endColumn >= pageWidth * FULL_LINE_RATIO;
+    const prevLooksLikeParagraph = prev.endColumn >= pageWidth * 0.45 || Math.abs(prev.leading - bodyMargin) <= 1;
     const atBodyMargin = Math.abs(line.leading - bodyMargin) <= CONTINUATION_TOLERANCE;
-    const continues = prevRanFull && atBodyMargin && !isCentered(line) && !line.bullet && !prev.bullet;
-    if (continues) {
+    const sameMargin = Math.abs(line.leading - prev.leading) <= CONTINUATION_TOLERANCE;
+    const continues =
+      atBodyMargin &&
+      sameMargin &&
+      prevLooksLikeParagraph &&
+      !isCentered(line) &&
+      !line.bullet &&
+      !prev.bullet;
+
+    // A wrapped line is still part of the same paragraph even when the
+    // previous visual line is shorter than the page-width threshold; in many
+    // Bengali PDFs the line fill ratio is lower than the generic heuristic
+    // assumes, and the "full line" gate was splitting valid paragraphs.
+    const continuesAsWrappedLine = continues || (prevRanFull && atBodyMargin && !isCentered(line) && !line.bullet && !prev.bullet);
+    if (continuesAsWrappedLine) {
       buffer.push(line);
     } else {
       flush();
